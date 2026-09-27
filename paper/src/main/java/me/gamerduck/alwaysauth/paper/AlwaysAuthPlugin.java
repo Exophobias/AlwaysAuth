@@ -4,7 +4,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public class AlwaysAuthPlugin extends JavaPlugin {
 
-    private static PaperPlatform paperPlatform;
+    private PaperPlatform paperPlatform;
 
     @Override
     public void onEnable() {
@@ -18,7 +18,10 @@ public class AlwaysAuthPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        paperPlatform.onDisable();
+        if (paperPlatform != null) {
+            paperPlatform.onDisable();
+            paperPlatform = null;
+        }
     }
 
 

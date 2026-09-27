@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.sql.*;
 import java.util.Base64;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
 
 public class AuthDatabase {
     private Connection connection;
@@ -42,7 +42,8 @@ public class AuthDatabase {
             }
         } catch (Exception e) {
             platform.sendSevereLogMessage("Failed to initialize H2 database: " + e.getMessage());
-            e.printStackTrace();
+            close();
+            throw new IllegalStateException("Failed to initialize authentication database", e);
         }
     }
 
@@ -81,7 +82,8 @@ public class AuthDatabase {
 
         } catch (Exception e) {
             platform.sendSevereLogMessage("Failed to initialize remote database: " + e.getMessage());
-            e.printStackTrace();
+            close();
+            throw new IllegalStateException("Failed to initialize authentication database", e);
         }
     }
 
@@ -101,15 +103,15 @@ public class AuthDatabase {
         }
     }
 
-    public void cacheAuthentication(String username, String ip, JsonObject profile) {
-        if (username == null || profile == null) return;
+    public synchronized void cacheAuthentication(String username, String ip, JsonObject profile) {
+        if (username == null || profile == null || !isKnownIp(ip)) return;
 
         try {
             String uuid = profile.get("id").getAsString();
             String profileJson = gson.toJson(profile);
             long timestamp = System.currentTimeMillis();
 
-            String encryptedIp = encryptionHelper.encrypt(ip != null ? ip : "unknown");
+            String encryptedIp = encryptionHelper.encrypt(ip);
 
             String sql;
             if (isRemote) {
@@ -141,12 +143,11 @@ public class AuthDatabase {
             }
         } catch (Exception e) {
             platform.sendWarningLogMessage("Failed to cache authentication: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
-    public String getFallbackAuth(String username, String ip, String securityLevel, int maxOfflineHours) {
-        if (username == null) return null;
+    public synchronized String getFallbackAuth(String username, String ip, String securityLevel, int maxOfflineHours) {
+        if (username == null || !isKnownIp(ip)) return null;
 
         try {
             String sql = """
@@ -166,15 +167,15 @@ public class AuthDatabase {
 
                         String cachedIp = encryptionHelper.decrypt(encryptedIp);
 
-                        if (ip != null && !ip.equals("unknown") && !ip.equals(cachedIp)) {
+                        if (!isKnownIp(cachedIp) || !ip.equals(cachedIp)) {
                             platform.sendWarningLogMessage("IP mismatch for " + username + " - cached: [ENCRYPTED], current: [ENCRYPTED]");
                             return null;
                         }
 
-                        if (securityLevel.equals("medium") && maxOfflineHours > 0) {
-                            long hoursSinceLastSeen = (System.currentTimeMillis() - lastSeen) / (1000 * 60 * 60);
-                            if (hoursSinceLastSeen > maxOfflineHours) {
-                                platform.sendWarningLogMessage("Auth cache expired for " + username + " - last seen " + hoursSinceLastSeen + " hours ago");
+                        if ("medium".equals(securityLevel) && maxOfflineHours > 0) {
+                            long offlineMillis = System.currentTimeMillis() - lastSeen;
+                            if (offlineMillis > TimeUnit.HOURS.toMillis(maxOfflineHours)) {
+                                platform.sendWarningLogMessage("Auth cache expired for " + username);
                                 return null;
                             }
                         }
@@ -186,13 +187,16 @@ public class AuthDatabase {
 
         } catch (Exception e) {
             platform.sendWarningLogMessage("Database error during fallback auth: " + e.getMessage());
-            e.printStackTrace();
         }
 
         return null;
     }
 
-    public CacheStats getStats() {
+    private static boolean isKnownIp(String ip) {
+        return ip != null && !ip.isBlank() && !"unknown".equalsIgnoreCase(ip);
+    }
+
+    public synchronized CacheStats getStats() {
         int tempTotalPlayers = 0;
         int tempRecentPlayers = 0;
         try {
@@ -226,7 +230,7 @@ public class AuthDatabase {
         return new CacheStats(tempTotalPlayers, tempRecentPlayers);
     }
 
-    public int cleanOldEntries(int daysOld) {
+    public synchronized int cleanOldEntries(int daysOld) {
         try {
             long cutoffTime = System.currentTimeMillis() - ((long) daysOld * 24 * 60 * 60 * 1000);
 
@@ -244,7 +248,7 @@ public class AuthDatabase {
         }
     }
 
-    public void close() {
+    public synchronized void close() {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();

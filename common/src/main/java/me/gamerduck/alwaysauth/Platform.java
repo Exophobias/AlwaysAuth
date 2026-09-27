@@ -13,6 +13,7 @@ public abstract class Platform<CS> {
     private final SessionProxyServer proxyServer;
     private SessionConfig config;
     private final Path platformFolder;
+    private boolean stopped;
 
     public static Platform<?> mixinOnly$instance;
 
@@ -42,7 +43,7 @@ public abstract class Platform<CS> {
                 sendLogMessage("Fallback mode: " + (config.isFallbackEnabled() ? "ENABLED" : "DISABLED"));
                 sendLogMessage("Security level: " + config.getSecurityLevel().toUpperCase());
             } else {
-                sendLogMessage("AlwaysAuth enabled! Using external domain " + config.getSessionServerUrl());
+                sendLogMessage("AlwaysAuth enabled! Using external session host " + config.getIpAddress());
                 proxyServer = null;
             }
             getUpdateMessage().ifPresent(this::sendLogMessage);
@@ -63,7 +64,14 @@ public abstract class Platform<CS> {
     public abstract void sendWarningLogMessage(String msg);
 
     public Optional<String> getUpdateMessage() {
-        Optional<String> newer = ModrinthUpdateChecker.getNewer();
+        if (!config.getUpdates()) return Optional.empty();
+        Optional<String> newer;
+        try {
+            newer = ModrinthUpdateChecker.getNewer();
+        } catch (RuntimeException e) {
+            sendWarningLogMessage("Update check failed; authentication remains active");
+            return Optional.empty();
+        }
         if (config.getUpdates() && newer.isPresent()) {
             return Optional.of("\u00A7cHey there is a new update for AlwaysAuth (" + newer.get() + ")! " +
                     "\u00A7cPlease update soon for the latest and best features! https://modrinth.com/plugin/alwaysauth/versions");
@@ -72,9 +80,12 @@ public abstract class Platform<CS> {
     }
 
     public void onDisable() {
+        if (stopped) return;
+        stopped = true;
         if (proxyServer != null) {
             proxyServer.stop();
         }
+        if (mixinOnly$instance == this) mixinOnly$instance = null;
         sendLogMessage("AlwaysAuth disabled");
     }
 
@@ -84,16 +95,20 @@ public abstract class Platform<CS> {
 
     public void cmdStatus(CS player) {
         sendMessage(player, "§6§lAlwaysAuth Status");
-        sendMessage(player,"§7Proxy Port: §f" + config.getPort());
+        sendMessage(player,"§7Configured Proxy Port: §f" + config.getPort());
         sendMessage(player,"§7Fallback: " + (config.isFallbackEnabled() ? "§aENABLED" : "§cDISABLED"));
         sendMessage(player,"§7Security: §f" + config.getSecurityLevel().toUpperCase());
         if (config.getSecurityLevel().equals("medium")) {
             sendMessage(player,"§7Max Offline Time: §f" + config.getMaxOfflineHours() + " hours");
         }
-        sendMessage(player,"§7Session URL: §f" + config.getSessionServerUrl());
+        sendMessage(player,"§7Session host: §f" + config.getIpAddress() + ":" + config.getPort());
     }
 
     public void cmdStats(CS player) {
+        if (proxyServer == null) {
+            sendMessage(player, "§cCache statistics are available on the external session server.");
+            return;
+        }
         AuthDatabase.CacheStats stats = proxyServer.getDatabase().getStats();
         sendMessage(player,"§6§lCache Statistics");
         sendMessage(player,"§7Total Players: §f" + stats.totalPlayers());
@@ -120,13 +135,26 @@ public abstract class Platform<CS> {
     }
 
     public void cmdCleanup(CS player) {
+        if (proxyServer == null) {
+            sendMessage(player, "§cRun cache cleanup on the external session server.");
+            return;
+        }
         int cleaned = proxyServer.getDatabase().cleanOldEntries(config.getCleanupDays());
         sendMessage(player,"§6Cleaned §f" + cleaned + "§6 old entries (older than " + config.getCleanupDays() + " days)");
     }
 
     public void cmdReload(CS player) {
-        config = new SessionConfig(platformFolder.toFile(), this);
-        sendMessage(player,"§6Configuration reloaded");
+        try {
+            SessionConfig candidate = new SessionConfig(platformFolder.toFile(), this);
+            // Parse the runtime numeric option before publishing a new generation.
+            candidate.getMaxOfflineHours();
+            if (proxyServer != null) proxyServer.reconfigureRuntimeSettings(candidate);
+            config = candidate;
+            sendMessage(player,"§6Fallback settings reloaded. Connection and database changes require a restart.");
+        } catch (RuntimeException e) {
+            sendMessage(player,"§cCould not reload configuration; previous runtime settings remain active.");
+            sendWarningLogMessage("Configuration reload failed; previous runtime settings remain active");
+        }
     }
 
     public void cmdDefault(CS player) {

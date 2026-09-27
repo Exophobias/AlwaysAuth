@@ -1,5 +1,7 @@
 .gradle/
 build/
+# Never track a directory provider's diagnostic string as generated sources.
+**/property(*/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/

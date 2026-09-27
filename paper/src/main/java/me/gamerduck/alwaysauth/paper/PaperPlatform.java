@@ -2,9 +2,6 @@ package me.gamerduck.alwaysauth.paper;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import me.gamerduck.alwaysauth.Platform;
-import me.gamerduck.alwaysauth.reflection.AuthenticationURLReplacer;
-import me.gamerduck.alwaysauth.reflection.ServerPropertiesReplacer;
-import org.bukkit.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -16,43 +13,51 @@ import java.util.logging.Logger;
 public class PaperPlatform extends Platform<CommandSourceStack> implements Listener {
 
     private static final Logger LOGGER = Logger.getLogger("AlwaysAuth");
-    private final JavaPlugin plugin;
+    private final PaperAuthenticationHook authenticationHook;
 
     public PaperPlatform(JavaPlugin bootstrap) {
         super(bootstrap.getDataFolder().toPath());
-        this.plugin = bootstrap;
 
-        AuthenticationURLReplacer.replaceSessionService(this, config().getSessionServerUrl());
-        ServerPropertiesReplacer.forcePreventProxyConnections(this);
-
-        bootstrap.registerCommand("alwaysauth", List.of("aa", "alwaysa"), (commandSourceStack, args) -> {
-            if (commandSourceStack.getSender().hasPermission("alwaysauth.admin")) {
-                if (args.length == 0) {
-                    cmdHelp(commandSourceStack);
-                    return;
-                }
-                switch (args[0].toLowerCase()) {
-                    case "status" -> cmdStatus(commandSourceStack);
-                    case "stats" -> cmdStats(commandSourceStack);
-                    case "toggle" -> cmdToggle(commandSourceStack);
-                    case "security" -> {
-                        if (args.length < 2) {
-                            sendMessage(commandSourceStack, "§cUsage: /alwaysauth security <basic|medium>");
-                            return;
-                        }
-                        String level = args[1].toLowerCase();
-                        cmdSecurity(commandSourceStack, level);
+        PaperAuthenticationHook installedHook = null;
+        try {
+            installedHook = PaperAuthenticationHook.install(config());
+            sendLogMessage("Paper 26.3 login verification hook installed (online mode preserved)");
+            bootstrap.registerCommand("alwaysauth", List.of("aa", "alwaysa"), (commandSourceStack, args) -> {
+                if (commandSourceStack.getSender().hasPermission("alwaysauth.admin")) {
+                    if (args.length == 0) {
+                        cmdHelp(commandSourceStack);
+                        return;
                     }
-                    case "cleanup" -> cmdCleanup(commandSourceStack);
-                    case "reload" -> cmdReload(commandSourceStack);
-                    default -> cmdDefault(commandSourceStack);
-                }
+                    switch (args[0].toLowerCase()) {
+                        case "status" -> cmdStatus(commandSourceStack);
+                        case "stats" -> cmdStats(commandSourceStack);
+                        case "toggle" -> cmdToggle(commandSourceStack);
+                        case "security" -> {
+                            if (args.length < 2) {
+                                sendMessage(commandSourceStack, "§cUsage: /alwaysauth security <basic|medium>");
+                                return;
+                            }
+                            String level = args[1].toLowerCase();
+                            cmdSecurity(commandSourceStack, level);
+                        }
+                        case "cleanup" -> cmdCleanup(commandSourceStack);
+                        case "reload" -> cmdReload(commandSourceStack);
+                        default -> cmdDefault(commandSourceStack);
+                    }
 
-                return;
-            } else {
-                sendMessage(commandSourceStack, "§cNo permissions");
+                    return;
+                } else {
+                    sendMessage(commandSourceStack, "§cNo permissions");
+                }
+            });
+        } catch (Exception | LinkageError e) {
+            if (installedHook != null) {
+                try { installedHook.close(); } catch (Exception restoreFailure) { e.addSuppressed(restoreFailure); }
             }
-        });
+            super.onDisable();
+            throw new IllegalStateException("Could not initialize Paper 26.3 authentication", e);
+        }
+        authenticationHook = installedHook;
 
     }
 
@@ -64,7 +69,19 @@ public class PaperPlatform extends Platform<CommandSourceStack> implements Liste
 
     @Override
     public boolean hasPermission(CommandSourceStack commandSender, String permission) {
-        return false;
+        return commandSender.getSender().hasPermission(permission);
+    }
+
+    @Override
+    public void onDisable() {
+        try {
+            authenticationHook.close();
+        } catch (Exception e) {
+            sendSevereLogMessage("Could not restore the original authentication discovery service");
+            throw new IllegalStateException("Authentication hook restoration failed", e);
+        } finally {
+            super.onDisable();
+        }
     }
 
     @Override

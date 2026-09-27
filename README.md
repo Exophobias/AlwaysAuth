@@ -1,3 +1,37 @@
+# Patriam Paper 26.3 fork
+
+This fork maintains the Paper plugin for Minecraft Java **26.3**, **Java 25**, and
+authlib **10.0.77**. Upstream: [GamerDuck123/AlwaysAuth](https://github.com/GamerDuck123/AlwaysAuth).
+Other platform sources are retained; this release's verification covers Paper.
+
+Build the maintained Paper plugin from the repository root:
+
+```sh
+./gradlew --no-daemon -p paper clean test jar verifyPaperApi
+```
+
+The jar is `build/all/AlwaysAuth-paper-0.5.1-patriam.1.jar`. The independent
+Paper build avoids configuring the upstream Fabric, NeoForge, and publishing tools.
+Patriam's canonical release command is `bash tools/build-all.sh AlwaysAuth` from
+the shared coordination workspace; it stages committed bytes as `AlwaysAuth.jar`.
+
+Keep `online-mode=true`. The plugin redirects only the existing session service's
+login verification endpoint; other Mojang services, signing keys, profile caches,
+and texture validation remain in place. An explicit upstream rejection never
+authorizes a cached login. Fallback requires a previously verified profile and
+the same known IP, plus the configured age limit in `medium` mode.
+
+Existing `config.properties` and encrypted cache formats are retained. Both token
+authentication modes are supported. `/alwaysauth reload` updates fallback,
+security level and maximum offline age; listener, token, upstream and database
+changes require a restart. The hook is removed on disable. Builds and
+automated HTTP/authlib tests do not establish real-player login compatibility;
+Paper startup and a real online login still need acceptance before deployment.
+
+---
+
+The following is the upstream project documentation.
+
 > I have opened a support discord, join now! [https://discord.gg/uHm8EbfCFr](https://discord.gg/uHm8EbfCFr)
 # AlwaysAuth
 
