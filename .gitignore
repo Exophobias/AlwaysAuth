@@ -41,3 +41,6 @@ bin/
 .DS_Store
 /.idea/
 /.env
+
+# Stonecutter regenerates the optional NeoForge platform selector.
+/neoforge/stonecutter.gradle.kts
