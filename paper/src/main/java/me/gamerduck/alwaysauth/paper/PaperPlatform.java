@@ -22,34 +22,17 @@ public class PaperPlatform extends Platform<CommandSourceStack> implements Liste
         try {
             installedHook = PaperAuthenticationHook.install(config());
             sendLogMessage("Paper 26.3 login verification hook installed (online mode preserved)");
-            bootstrap.registerCommand("alwaysauth", List.of("aa", "alwaysa"), (commandSourceStack, args) -> {
-                if (commandSourceStack.getSender().hasPermission("alwaysauth.admin")) {
-                    if (args.length == 0) {
-                        cmdHelp(commandSourceStack);
-                        return;
-                    }
-                    switch (args[0].toLowerCase()) {
-                        case "status" -> cmdStatus(commandSourceStack);
-                        case "stats" -> cmdStats(commandSourceStack);
-                        case "toggle" -> cmdToggle(commandSourceStack);
-                        case "security" -> {
-                            if (args.length < 2) {
-                                sendMessage(commandSourceStack, "§cUsage: /alwaysauth security <basic|medium>");
-                                return;
-                            }
-                            String level = args[1].toLowerCase();
-                            cmdSecurity(commandSourceStack, level);
-                        }
-                        case "cleanup" -> cmdCleanup(commandSourceStack);
-                        case "reload" -> cmdReload(commandSourceStack);
-                        default -> cmdDefault(commandSourceStack);
-                    }
-
-                    return;
-                } else {
-                    sendMessage(commandSourceStack, "§cNo permissions");
+            bootstrap.registerCommand("alwaysauth", List.of("aa", "alwaysa"), new AlwaysAuthCommand((source, args) -> {
+                switch (args[0].toLowerCase(java.util.Locale.ROOT)) {
+                    case "status" -> cmdStatus(source);
+                    case "stats" -> cmdStats(source);
+                    case "toggle" -> cmdToggle(source);
+                    case "security" -> cmdSecurity(source, args[1].toLowerCase(java.util.Locale.ROOT));
+                    case "cleanup" -> cmdCleanup(source);
+                    case "reload" -> cmdReload(source);
+                    default -> throw new IllegalArgumentException("Unrecognized command dispatch");
                 }
-            });
+            }));
         } catch (Exception | LinkageError e) {
             if (installedHook != null) {
                 try { installedHook.close(); } catch (Exception restoreFailure) { e.addSuppressed(restoreFailure); }
