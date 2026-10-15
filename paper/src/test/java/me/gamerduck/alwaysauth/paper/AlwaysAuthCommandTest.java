@@ -24,6 +24,7 @@ class AlwaysAuthCommandTest {
         AtomicInteger actions = new AtomicInteger(); List<String> messages = new ArrayList<>();
         AlwaysAuthCommand command = new AlwaysAuthCommand((s,a) -> actions.incrementAndGet());
         CommandSourceStack source = source(false,messages);
+        assertFalse(command.canUse(source.getSender()));
         for (String[] args : List.of(new String[0],new String[]{"help","staff"},new String[]{"toggle"},new String[]{"security","basic"},new String[]{"cleanup"})) command.execute(source,args);
         assertEquals(0,actions.get());assertEquals(5,messages.size());
         assertTrue(messages.stream().allMatch(m -> m.equals("§cYou do not have permission to do that.")));
@@ -34,6 +35,7 @@ class AlwaysAuthCommandTest {
         AtomicInteger actions = new AtomicInteger(); List<String> messages = new ArrayList<>();
         AlwaysAuthCommand command = new AlwaysAuthCommand((s,a) -> actions.incrementAndGet());
         CommandSourceStack source=source(true,messages);
+        assertTrue(command.canUse(source.getSender()));
         for (String[] args : List.of(new String[0],new String[]{"help"},new String[]{"help","0"},new String[]{"help","99"},new String[]{"help","banana"},new String[]{"help","staff","99"})) {
             messages.clear();command.execute(source,args);assertEquals(8,messages.size());
             assertTrue(messages.get(0).contains("AlwaysAuth Staff"));

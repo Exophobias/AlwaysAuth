@@ -13,6 +13,8 @@ public final class AlwaysAuthCommand implements BasicCommand {
     private final BiConsumer<CommandSourceStack, String[]> action;
     public AlwaysAuthCommand(BiConsumer<CommandSourceStack, String[]> action) { this.action = action; }
 
+    @Override public String permission() { return "alwaysauth.admin"; }
+
     @Override public void execute(CommandSourceStack source, String[] args) {
         if (!source.getSender().hasPermission("alwaysauth.admin")) {
             source.getSender().sendMessage("§cYou do not have permission to do that.");
